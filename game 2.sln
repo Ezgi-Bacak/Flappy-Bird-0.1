@@ -1,31 +1,199 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36717.8 d17.14
-MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "game 2", "game 2\game 2.vcxproj", "{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}"
-EndProject
-Global
-	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|x64 = Debug|x64
-		Debug|x86 = Debug|x86
-		Release|x64 = Release|x64
-		Release|x86 = Release|x86
-	EndGlobalSection
-	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Debug|x64.ActiveCfg = Debug|x64
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Debug|x64.Build.0 = Debug|x64
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Debug|x86.ActiveCfg = Debug|Win32
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Debug|x86.Build.0 = Debug|Win32
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Release|x64.ActiveCfg = Release|x64
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Release|x64.Build.0 = Release|x64
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Release|x86.ActiveCfg = Release|Win32
-		{91C8D90C-0CC1-4B28-A29E-3D801A82E3F5}.Release|x86.Build.0 = Release|Win32
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {3A2C9A66-EDC8-4DA0-BD3A-089999537B21}
-	EndGlobalSection
-EndGlobal
+#include "raylib.h"
+#include "rlgl.h"
+#include <vector>
+#include <cmath>
+
+using namespace std;
+
+enum GameState { MENU, GAMEPLAY, GAMEOVER };
+
+struct Bird {
+    float x, y;
+    float velocity;
+    float radius;
+};
+
+struct Pipe {
+    float x;
+    float gapY;
+    bool passed;
+};
+
+int main() {
+    const int screenWidth = 800;
+    const int screenHeight = 600;
+    InitWindow(screenWidth, screenHeight, "Flappy Bird 0.1");
+
+    GameState currentState = MENU;
+
+    const float GRAVITY = 1200.0f;
+    const float JUMP_SPEED = -400.0f;
+    const float PIPE_SPEED = 250.0f;
+    const float PIPE_WIDTH = 70.0f;
+    const float GAP_SIZE = 160.0f;
+
+    Bird bird;
+    vector<Pipe> pipes;
+    int score = 0;
+    int highScore = 0;
+
+    SetTargetFPS(60);
+
+    auto ResetGame = [&]() {
+        bird.x = 200.0f;
+        bird.y = screenHeight / 2.0f;
+        bird.velocity = 0.0f;
+        bird.radius = 16.0f;
+
+        pipes.clear();
+        score = 0;
+
+        for (int i = 0; i < 4; i++) {
+            pipes.push_back({
+                800.0f + (i * 300.0f),
+                (float)GetRandomValue(150, screenHeight - 150),
+                false
+                });
+        }
+        currentState = GAMEPLAY;
+        };
+
+    while (!WindowShouldClose()) {
+        float deltaTime = GetFrameTime();
+
+        if (currentState == MENU) {
+            if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
+                ResetGame();
+            }
+        }
+        else if (currentState == GAMEPLAY) {
+            bird.velocity += GRAVITY * deltaTime;
+            bird.y += bird.velocity * deltaTime;
+
+            if (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                bird.velocity = JUMP_SPEED;
+            }
+
+            for (auto& pipe : pipes) {
+                pipe.x -= PIPE_SPEED * deltaTime;
+
+                if (!pipe.passed && bird.x > pipe.x + PIPE_WIDTH) {
+                    score++;
+                    if (score > highScore) highScore = score;
+                    pipe.passed = true;
+                }
+            }
+
+            if (!pipes.empty() && pipes.front().x + PIPE_WIDTH < 0) {
+                pipes.erase(pipes.begin());
+                float lastPipeX = pipes.back().x;
+                pipes.push_back({
+                    lastPipeX + 300.0f,
+                    (float)GetRandomValue(150, screenHeight - 150),
+                    false
+                    });
+            }
+
+            if (bird.y + bird.radius >= screenHeight || bird.y - bird.radius <= 0) {
+                currentState = GAMEOVER;
+            }
+
+            for (const auto& pipe : pipes) {
+                Rectangle topPipe = { pipe.x, 0, PIPE_WIDTH, pipe.gapY - GAP_SIZE / 2 };
+                Rectangle bottomPipe = {
+                    pipe.x,
+                    pipe.gapY + GAP_SIZE / 2,
+                    PIPE_WIDTH,
+                    screenHeight - (pipe.gapY + GAP_SIZE / 2)
+                };
+
+                if (CheckCollisionCircleRec(Vector2{ bird.x, bird.y }, bird.radius, topPipe) ||
+                    CheckCollisionCircleRec(Vector2{ bird.x, bird.y }, bird.radius, bottomPipe)) {
+                    currentState = GAMEOVER;
+                }
+            }
+        }
+        else if (currentState == GAMEOVER) {
+            if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
+                currentState = MENU;
+            }
+        }
+
+        BeginDrawing();
+        ClearBackground(SKYBLUE);
+
+        if (currentState == MENU) {
+            DrawText("FLAPPY BIRD",
+                screenWidth / 2 - MeasureText("FLAPPY BIRD", 50) / 2,
+                150, 50, WHITE);
+            DrawText("Press SPACE to Flap",
+                screenWidth / 2 - MeasureText("Press SPACE to Flap", 20) / 2,
+                300, 20, DARKGRAY);
+        }
+        else {
+            for (const auto& pipe : pipes) {
+                Rectangle topPipe = { pipe.x, 0, PIPE_WIDTH, pipe.gapY - GAP_SIZE / 2 };
+                Rectangle bottomPipe = {
+                    pipe.x,
+                    pipe.gapY + GAP_SIZE / 2,
+                    PIPE_WIDTH,
+                    screenHeight - (pipe.gapY + GAP_SIZE / 2)
+                };
+
+                DrawRectangleRec(topPipe, LIME);
+                DrawRectangleLinesEx(topPipe, 4.0f, DARKGREEN);
+
+                DrawRectangleRec(bottomPipe, LIME);
+                DrawRectangleLinesEx(bottomPipe, 4.0f, DARKGREEN);
+            }
+
+            rlPushMatrix();
+            rlTranslatef(bird.x, bird.y, 0);
+
+            float rotationAngle = bird.velocity * 0.08f;
+            if (rotationAngle < -30.0f) rotationAngle = -30.0f;
+            if (rotationAngle > 70.0f) rotationAngle = 70.0f;
+            rlRotatef(rotationAngle, 0, 0, 1);
+
+            DrawCircle(0, 0, bird.radius, Color{ 253, 249, 0, 255 });
+            DrawCircleLines(0, 0, bird.radius, BLACK);
+
+            DrawCircle(6, -6, 6.0f, WHITE);
+            DrawCircleLines(6, -6, 6.0f, BLACK);
+            DrawCircle(8, -6, 2.5f, BLACK);
+
+            DrawTriangle(Vector2{ 12, -2 }, Vector2{ 12, 6 }, Vector2{ 24, 4 }, ORANGE);
+            DrawLineEx(Vector2{ 12, 2 }, Vector2{ 22, 4 }, 2.0f, BLACK);
+
+            float wingY = (currentState == GAMEOVER) ? 0.0f : sinf((float)GetTime() * 30.0f) * 5.0f;
+            DrawEllipse(-4, 2 + (int)wingY, 8.0f, 5.0f, WHITE);
+            DrawEllipseLines(-4, 2 + (int)wingY, 8.0f, 5.0f, BLACK);
+
+            rlPopMatrix();
+
+            DrawRectangle(0, screenHeight - 20, screenWidth, 20, DARKGREEN);
+
+            DrawText(TextFormat("%d", score),
+                screenWidth / 2 - MeasureText(TextFormat("%d", score), 60) / 2,
+                50, 60, WHITE);
+
+            if (currentState == GAMEOVER) {
+                DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.6f));
+                DrawText("GAME OVER!",
+                    screenWidth / 2 - MeasureText("GAME OVER!", 50) / 2,
+                    200, 50, RED);
+                DrawText(TextFormat("High Score: %d", highScore),
+                    screenWidth / 2 - MeasureText(TextFormat("High Score: %d", highScore), 30) / 2,
+                    280, 30, YELLOW);
+                DrawText("Press SPACE to Menu",
+                    screenWidth / 2 - MeasureText("Press SPACE to Menu", 20) / 2,
+                    350, 20, WHITE);
+            }
+        }
+
+        EndDrawing();
+    }
+
+    CloseWindow();
+    return 0;
+}
